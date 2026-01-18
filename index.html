@@ -3,416 +3,499 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI English Listening Player</title>
+    <title>AI English Player - V18 Smart Resume</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        .active-segment { 
-            background-color: #dbeafe; 
-            border-left: 4px solid #2563eb; 
-            transform: translateX(4px);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        .active-chunk { 
+            background-color: #dbeafe !important; 
+            border-bottom: 3px solid #2563eb !important; 
+            color: #1d4ed8;
+            font-weight: 700;
+            border-radius: 4px;
         }
-        .segment-item { transition: all 0.15s ease-out; }
-        .segment-text { transition: color 0.1s; }
-        .active-segment .segment-text { color: #1e40af; font-weight: 600; }
-        .skipped-segment { opacity: 0.3; background-color: #f1f5f9; }
-        .skipped-segment .segment-text { text-decoration: line-through; }
-        .speaking-pulse {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        .disabled-chunk {
+            opacity: 0.3;
+            text-decoration: line-through;
+            background-color: #f1f5f9;
+            pointer-events: none;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
+        .disabled-chunk button {
+            pointer-events: auto;
+            text-decoration: none;
+            opacity: 1;
         }
-        #transcriptList {
-            scroll-behavior: smooth;
-        }
+        .library-item:hover { border-color: #3b82f6; background-color: #eff6ff; }
+        .speaking-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        #transcriptArea { scroll-behavior: smooth; }
+        input[type=range] { accent-color: #2563eb; }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
-    <div id="app" class="max-w-4xl mx-auto p-4 md:p-8 pb-32">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-slate-800 flex items-center justify-center gap-2">
-                <i data-lucide="headphones" class="text-blue-600"></i>
-                AI English Listening Player
-            </h1>
-            <div id="apiSettings" class="mt-4 flex flex-col items-center gap-2">
-                <div class="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm w-full max-w-sm">
-                    <input type="password" id="apiKeyInput" placeholder="Gemini API Key を入力" class="flex-1 px-3 py-1.5 text-sm outline-none">
-                    <button id="saveKeyBtn" class="bg-slate-800 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-slate-700 transition">Save</button>
-                </div>
-                <p class="text-[10px] text-slate-400 uppercase tracking-widest">API Key is stored only in your browser</p>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<div id="app" class="max-w-5xl mx-auto p-4 md:p-8 pb-40">
+    
+    <!-- HEADER -->
+    <header class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex items-center gap-3 w-full md:w-auto">
+            <div class="bg-blue-600 p-2 rounded-lg text-white"><i data-lucide="headphones" class="w-6 h-6"></i></div>
+            <div>
+                <h1 class="text-xl font-bold text-slate-800 tracking-tight">AI English Player</h1>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Stable V18</p>
             </div>
-        </header>
+        </div>
+        <div class="flex gap-2">
+            <button id="viewLibBtn" class="px-4 py-2 rounded-lg text-sm font-bold bg-white border border-slate-200 text-slate-500 hover:text-blue-600 shadow-sm transition-all">Library</button>
+            <button id="viewPlayBtn" class="px-4 py-2 rounded-lg text-sm font-bold bg-white border border-slate-200 text-slate-500 hover:text-blue-600 shadow-sm transition-all">Player</button>
+            <button id="toggleSettings" class="p-2 text-slate-400 hover:text-blue-600 transition-colors"><i data-lucide="settings" class="w-5 h-5"></i></button>
+        </div>
+    </header>
 
-        <main class="space-y-6">
-            <!-- Upload Area -->
-            <div id="uploadZone" class="bg-white border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
-                <input type="file" id="audioInput" accept="audio/*" class="hidden">
-                <div id="uploadPrompt">
-                    <i data-lucide="upload-cloud" class="mx-auto w-12 h-12 text-slate-400 mb-4"></i>
-                    <p class="text-lg font-medium text-slate-700">音声ファイルをアップロード</p>
-                    <p class="text-sm text-slate-400">AIが音声を解析してセンテンスごとに同期させます</p>
-                </div>
-                <div id="transcribingState" class="hidden">
-                    <div class="flex flex-col items-center">
-                        <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p class="text-lg font-medium text-blue-600">AIが高精度同期解析を実行中...</p>
-                        <p class="text-sm text-slate-400">文字起こしを行っています（10〜30秒）</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Player Container -->
-            <div id="playerContainer" class="hidden space-y-4">
-                <!-- Speaking Timer Overlay -->
-                <div id="speakingTimer" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md bg-blue-600 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between px-8 border-2 border-blue-400">
-                    <div class="flex items-center gap-3">
-                        <div class="bg-blue-500 p-2 rounded-full">
-                            <i data-lucide="mic" class="speaking-pulse w-5 h-5 text-white"></i>
-                        </div>
-                        <div class="flex flex-col">
-                            <span class="text-[10px] uppercase tracking-widest opacity-80 font-bold">Repeat Mode</span>
-                            <span class="font-bold text-lg leading-tight">YOUR TURN</span>
-                        </div>
-                    </div>
-                    <div class="text-3xl font-mono font-bold" id="timerSeconds">0.0s</div>
-                </div>
-
-                <!-- Controls -->
-                <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                    <div class="flex flex-wrap items-center justify-between gap-4">
-                        <div class="flex items-center gap-4">
-                            <button id="playPauseBtn" class="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition shadow-md">
-                                <i data-lucide="play"></i>
-                            </button>
-                            <div class="space-y-1">
-                                <div class="text-xs text-slate-500 flex justify-between font-mono">
-                                    <span id="currentTime">0:00</span>
-                                    <span id="duration">0:00</span>
-                                </div>
-                                <input type="range" id="seekSlider" class="w-48 md:w-64 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-4 lg:gap-6 flex-wrap">
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Speed</span>
-                                <select id="speedSelect" class="text-sm font-medium bg-slate-100 border-none rounded-md px-2 py-1 outline-none">
-                                    <option value="0.5">0.5x</option>
-                                    <option value="0.75">0.75x</option>
-                                    <option value="1.0" selected>1.0x</option>
-                                    <option value="1.25">1.25x</option>
-                                    <option value="1.5">1.5x</option>
-                                </select>
-                            </div>
-
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Pause</span>
-                                <select id="pauseRatioSelect" class="text-sm font-medium bg-slate-100 border-none rounded-md px-2 py-1 outline-none">
-                                    <option value="1.0" selected>1.0x</option>
-                                    <option value="1.1">1.1x</option>
-                                    <option value="1.2">1.2x</option>
-                                    <option value="1.3">1.3x</option>
-                                    <option value="1.4">1.4x</option>
-                                    <option value="1.5">1.5x</option>
-                                </select>
-                            </div>
-                            
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Slash</span>
-                                <button id="slashToggle" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-sm font-medium transition hover:bg-slate-200 active:scale-95">
-                                    <i data-lucide="scissors" class="w-4 h-4"></i>
-                                    <span id="slashText">Off</span>
-                                </button>
-                            </div>
-
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-slate-400 uppercase tracking-tighter">Mode</span>
-                                <button id="modeToggle" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-sm font-medium transition active:scale-95 border-2 border-transparent shadow-sm">
-                                    <i data-lucide="list-music" class="w-4 h-4"></i>
-                                    <span id="modeText">一括再生</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- A-B Repeat -->
-                    <div class="mt-6 flex items-center gap-4 pt-4 border-t border-slate-100">
-                        <span class="text-xs font-bold text-slate-400 uppercase">A-B Repeat</span>
-                        <button id="setStartBtn" class="px-3 py-1 border border-slate-300 rounded text-xs hover:bg-slate-50 font-medium">Point A</button>
-                        <button id="setEndBtn" class="px-3 py-1 border border-slate-300 rounded text-xs hover:bg-slate-50 font-medium">Point B</button>
-                        <button id="clearRepeatBtn" class="text-slate-400 hover:text-red-500 transition">
-                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                        </button>
-                        <div id="repeatStatus" class="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded hidden">
-                            Looping: <span id="loopDisplay" class="font-mono">0:00 - 0:00</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Transcription -->
-                <div id="transcriptionView" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-semibold text-slate-600">Transcription</span>
-                            <span id="slashBadge" class="hidden px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase">Slash Mode</span>
-                        </div>
-                        <span class="text-xs text-slate-400 italic">クリックしてジャンプ再生</span>
-                    </div>
-                    <div id="transcriptList" class="max-h-[60vh] overflow-y-auto p-2 divide-y divide-slate-50">
-                        <!-- Segments -->
-                    </div>
-                </div>
-            </div>
-        </main>
+    <!-- SETTINGS -->
+    <div id="settingsPanel" class="hidden mb-6 p-5 bg-white rounded-2xl border-2 border-blue-100 shadow-xl">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Gemini API Key</label>
+        <div class="flex gap-2 mb-2">
+            <input type="password" id="apiKey" placeholder="Enter API Key..." class="flex-1 px-3 py-2 text-sm border-2 border-slate-100 rounded-xl outline-none focus:border-blue-500 transition-all">
+            <button id="saveKey" class="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-slate-700 transition-all">Save</button>
+        </div>
+        <p class="text-[10px] text-slate-400 italic">Key is stored in your browser (localStorage).</p>
     </div>
 
-    <!-- Error/Toast -->
-    <div id="errorToast" class="fixed bottom-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 transition-transform duration-300 flex items-center gap-3">
-        <i data-lucide="alert-circle"></i>
-        <span id="errorMessage">エラーが発生しました</span>
+    <!-- LIBRARY VIEW -->
+    <div id="libraryView" class="space-y-6 animate-in fade-in duration-300">
+        <div id="dropZone" class="bg-white border-2 border-dashed border-slate-300 rounded-3xl p-10 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-all cursor-pointer">
+            <input type="file" id="fileInput" accept="audio/*" class="hidden">
+            <div id="dropMsg">
+                <div class="bg-slate-100 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400"><i data-lucide="upload-cloud" class="w-7 h-7"></i></div>
+                <p class="font-bold text-slate-600">Add New Lesson</p>
+                <p class="text-xs text-slate-400 mt-1">MP3, WAV, M4A (Auto-analysis)</p>
+            </div>
+            <div id="busyMsg" class="hidden">
+                <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                <p class="text-blue-600 font-bold animate-pulse">Analyzing...</p>
+            </div>
+        </div>
+        <div>
+            <div class="flex justify-between items-center mb-3 px-1">
+                <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Your Collection</h2>
+                <span id="libCount" class="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">0 Items</span>
+            </div>
+            <div id="libList" class="grid gap-3 grid-cols-1 md:grid-cols-2"></div>
+        </div>
     </div>
 
-    <script>
-        let apiKey = localStorage.getItem('GEMINI_API_KEY') || ""; 
-        let audioPlayer = new Audio();
-        let segments = [];
-        let isSlashMode = false;
-        let repeatPoints = { start: null, end: null };
-        let playbackMode = 'continuous'; 
-        let currentActiveId = -1;
-        let lastStoppedId = -1;
-        let pauseTimerInterval = null;
-        let isWaitingForNext = false;
-        let animationFrameId = null;
-        let pauseRatio = 1.0;
+    <!-- PLAYER VIEW -->
+    <div id="playerView" class="hidden space-y-6 animate-in fade-in duration-300">
+        <div class="bg-white rounded-3xl p-6 shadow-xl border border-slate-200 sticky top-4 z-40">
+            <div class="flex justify-between items-start mb-6">
+                <div class="flex items-center gap-4 overflow-hidden">
+                    <div class="bg-blue-50 p-3 rounded-2xl text-blue-600 shrink-0"><i data-lucide="music" class="w-6 h-6"></i></div>
+                    <div class="min-w-0">
+                        <h2 id="trackTitle" class="font-bold text-lg text-slate-800 truncate">No Track</h2>
+                        <div class="flex items-center gap-2 mt-1 text-xs font-mono font-bold text-slate-400">
+                            <span id="currTime" class="text-blue-600">0:00</span> / <span id="totalTime">0:00</span>
+                            <span id="loopStatus" class="ml-2 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">1/5</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="closePlayer" class="p-2 text-slate-300 hover:text-slate-500 hover:bg-slate-100 rounded-full transition-all"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
 
-        const apiKeyInput = document.getElementById('apiKeyInput');
-        const saveKeyBtn = document.getElementById('saveKeyBtn');
-        const audioInput = document.getElementById('audioInput');
-        const uploadZone = document.getElementById('uploadZone');
-        const uploadPrompt = document.getElementById('uploadPrompt');
-        const transcribingState = document.getElementById('transcribingState');
-        const playerContainer = document.getElementById('playerContainer');
-        const transcriptList = document.getElementById('transcriptList');
-        const playPauseBtn = document.getElementById('playPauseBtn');
-        const seekSlider = document.getElementById('seekSlider');
-        const currentTimeEl = document.getElementById('currentTime');
-        const durationEl = document.getElementById('duration');
-        const speedSelect = document.getElementById('speedSelect');
-        const pauseRatioSelect = document.getElementById('pauseRatioSelect');
-        const modeToggle = document.getElementById('modeToggle');
-        const modeText = document.getElementById('modeText');
-        const slashToggle = document.getElementById('slashToggle');
-        const slashText = document.getElementById('slashText');
-        const slashBadge = document.getElementById('slashBadge');
-        const speakingTimer = document.getElementById('speakingTimer');
-        const timerSeconds = document.getElementById('timerSeconds');
-        const setStartBtn = document.getElementById('setStartBtn');
-        const setEndBtn = document.getElementById('setEndBtn');
-        const clearRepeatBtn = document.getElementById('clearRepeatBtn');
-        const repeatStatus = document.getElementById('repeatStatus');
-        const loopDisplay = document.getElementById('loopDisplay');
-        const errorToast = document.getElementById('errorToast');
-        const errorMessage = document.getElementById('errorMessage');
+            <input type="range" id="progressBar" class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer mb-8" value="0" step="0.1">
 
-        window.onload = () => {
-            if (apiKey) apiKeyInput.value = apiKey;
-            lucide.createIcons();
-            setupEventListeners();
+            <div class="flex flex-col lg:flex-row items-center gap-6">
+                <div class="flex items-center gap-4">
+                    <button id="btnPlay" class="w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 shadow-lg shadow-blue-200 active:scale-95 transition-all"><i data-lucide="play" class="w-6 h-6 fill-current"></i></button>
+                    <button id="btnStop" class="w-10 h-10 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all" title="Stop & Reset"><i data-lucide="square" class="w-4 h-4 fill-current"></i></button>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mode</label>
+                        <select id="selMode" class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+                            <option value="sentence">Sentence</option>
+                            <option value="slash">Slash</option>
+                            <option value="nonstop">Non-stop</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Wait</label>
+                        <select id="selWait" class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+                            <option value="1.0">1.0x</option>
+                            <option value="1.2">1.2x</option>
+                            <option value="1.5">1.5x</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Link</label>
+                        <select id="selOverlap" class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+                            <option value="0">0s</option>
+                            <option value="0.2">0.2s</option>
+                            <option value="0.5" selected>0.5s</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Speed</label>
+                        <select id="selSpeed" class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+                            <option value="0.75">0.75</option>
+                            <option value="1.0" selected>1.0</option>
+                            <option value="1.25">1.25</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Repeat</label>
+                        <select id="selRepeat" class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+                            <option value="5" selected>5</option>
+                            <option value="10">10</option>
+                            <option value="999">∞</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="transcriptArea" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 min-h-[300px]"></div>
+    </div>
+
+    <!-- OVERLAY -->
+    <div id="speakOverlay" class="hidden fixed bottom-12 left-1/2 -translate-x-1/2 z-[60] w-[90%] max-w-sm bg-slate-900/95 backdrop-blur-md text-white p-6 rounded-[2.5rem] shadow-2xl border border-white/10 flex items-center justify-between">
+        <div class="flex items-center gap-4 text-left">
+            <div class="bg-blue-600 p-3 rounded-full shadow-lg shadow-blue-500/50"><i data-lucide="mic" class="speaking-pulse w-6 h-6"></i></div>
+            <div>
+                <p class="text-[10px] font-black uppercase tracking-tight opacity-50">Repeat now</p>
+                <p class="font-bold text-xl tracking-tight">YOUR TURN</p>
+            </div>
+        </div>
+        <div class="text-4xl font-mono font-black text-blue-400" id="waitTimer">0.0</div>
+    </div>
+</div>
+
+<div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl transform -translate-y-32 transition-all duration-500 z-[100] flex items-center gap-3 text-sm font-bold">
+    <i data-lucide="info" class="w-5 h-5 text-blue-400"></i>
+    <span id="toastMsg"></span>
+</div>
+
+<script>
+// DB
+const DB_NAME = 'EnglishApp_V18';
+const STORE = 'lessons';
+const dbPromise = new Promise(resolve => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+    r.onsuccess = e => resolve(e.target.result);
+});
+const DB = {
+    async add(file, chunks) { const db=await dbPromise; const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).add({title:file.name, date:new Date(), audio:file, chunks}); return new Promise(r=>tx.oncomplete=r); },
+    async getAll() { const db=await dbPromise; return new Promise(r=>{ const req=db.transaction(STORE,'readonly').objectStore(STORE).getAll(); req.onsuccess=()=>r(req.result); }); },
+    async delete(id) { const db=await dbPromise; const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(id); return new Promise(r=>tx.oncomplete=r); }
+};
+
+// STATE
+const STATE = { key: localStorage.getItem('GEMINI_API_KEY')||'', track: null, audio: new Audio(), mode: 'sentence', waitRatio: 1.0, overlap: 0.5, maxRepeats: 5, speed: 1.0, activeIdx: 0, playCount: 0, playEndTime: Infinity, isWaiting: false, raf: null, waitTimer: null, seekGuard: false };
+const el = id => document.getElementById(id);
+const UI = { keyIn: el('apiKey'), saveKey: el('saveKey'), panel: el('settingsPanel'), btnSet: el('toggleSettings'), libView: el('libraryView'), playView: el('playerView'), navLib: el('viewLibBtn'), navPlay: el('viewPlayBtn'), dropZone: el('dropZone'), fileIn: el('fileInput'), dropMsg: el('dropMsg'), busyMsg: el('busyMsg'), libList: el('libList'), libCount: el('libCount'), title: el('trackTitle'), curr: el('currTime'), total: el('totalTime'), loop: el('loopStatus'), close: el('closePlayer'), bar: el('progressBar'), play: el('btnPlay'), stop: el('btnStop'), mode: el('selMode'), wait: el('selWait'), link: el('selOverlap'), spd: el('selSpeed'), rep: el('selRepeat'), trans: el('transcriptArea'), overlay: el('speakOverlay'), timer: el('waitTimer'), toast: el('toast'), toastMsg: el('toastMsg') };
+
+// UTILS
+function fmt(s) { const m = Math.floor(s/60), ss = Math.floor(s%60); return `${m}:${ss.toString().padStart(2,'0')}`; }
+function notify(m) { UI.toastMsg.textContent = m; UI.toast.classList.remove('-translate-y-32'); setTimeout(() => UI.toast.classList.add('-translate-y-32'), 3000); }
+function setIcon(n) { const i = UI.play.querySelector('i'); if(i) { i.setAttribute('data-lucide', n); lucide.createIcons(); } }
+function updateLoop() { const m = STATE.maxRepeats===999?'∞':STATE.maxRepeats; UI.loop.textContent = (STATE.playCount+1)+'/'+m; }
+function highlight(i) {
+    document.querySelectorAll('.active-chunk').forEach(e => e.classList.remove('active-chunk'));
+    const el = document.getElementById('c-'+i);
+    if(el) { el.classList.add('active-chunk'); el.scrollIntoView({behavior:'smooth', block:'center'}); }
+}
+function cancelWait() {
+    if(STATE.waitTimer) clearInterval(STATE.waitTimer);
+    STATE.waitTimer = null; STATE.isWaiting = false; UI.overlay.classList.add('hidden');
+}
+
+window.onload = async () => {
+    lucide.createIcons();
+    if (STATE.key) UI.keyIn.value = STATE.key;
+    await refreshLib();
+    
+    UI.saveKey.onclick = () => { STATE.key = UI.keyIn.value.trim(); localStorage.setItem('GEMINI_API_KEY', STATE.key); notify("API Key Saved"); UI.panel.classList.add('hidden'); };
+    UI.btnSet.onclick = () => UI.panel.classList.toggle('hidden');
+    UI.navLib.onclick = () => showView('lib'); UI.navPlay.onclick = () => showView('play'); UI.close.onclick = () => { stopAudio(); showView('lib'); };
+    UI.dropZone.onclick = () => UI.fileIn.click(); UI.fileIn.onchange = uploadFile;
+    UI.play.onclick = togglePlay; UI.stop.onclick = stopAudio; UI.bar.oninput = onSeek;
+    
+    UI.mode.onchange = () => { STATE.mode = UI.mode.value; cancelWait(); };
+    UI.wait.onchange = () => STATE.waitRatio = parseFloat(UI.wait.value);
+    UI.link.onchange = () => STATE.overlap = parseFloat(UI.link.value);
+    UI.spd.onchange = () => STATE.audio.playbackRate = parseFloat(UI.spd.value);
+    UI.rep.onchange = () => { STATE.maxRepeats = parseInt(UI.rep.value); updateLoop(); };
+
+    STATE.audio.onloadedmetadata = () => { UI.total.textContent = fmt(STATE.audio.duration); UI.bar.max = STATE.audio.duration; };
+    STATE.audio.onplay = () => { setIcon('pause'); startLoop(); };
+    STATE.audio.onpause = () => { if(!STATE.isWaiting) setIcon('play'); stopLoop(); };
+    STATE.audio.onended = onTrackEnd;
+};
+
+function showView(view) {
+    if (view === 'lib') { UI.libView.classList.remove('hidden'); UI.playView.classList.add('hidden'); refreshLib(); }
+    else { if (!STATE.track) return notify("Select a lesson first"); UI.libView.classList.add('hidden'); UI.playView.classList.remove('hidden'); renderTrans(); }
+}
+
+async function refreshLib() {
+    const list = await DB.getAll(); UI.libList.innerHTML = ''; UI.libCount.textContent = list.length + ' Items';
+    list.sort((a,b) => b.date - a.date).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'library-item bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-center cursor-pointer transition-all';
+        div.innerHTML = `<div class="flex items-center gap-3 overflow-hidden"><div class="bg-blue-50 text-blue-600 p-2 rounded-lg"><i data-lucide="file-audio" class="w-5 h-5"></i></div><div class="truncate"><div class="font-bold text-slate-700 truncate">${item.title}</div><div class="text-[10px] text-slate-400 uppercase font-bold">${item.chunks.length} Chunks</div></div></div><button class="del p-2 text-slate-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+        div.onclick = () => loadTrack(item);
+        div.querySelector('.del').onclick = async (e) => { e.stopPropagation(); if(confirm('Delete?')) { await DB.delete(item.id); refreshLib(); } };
+        UI.libList.appendChild(div);
+    });
+    lucide.createIcons();
+}
+
+async function uploadFile(e) {
+    const file = e.target.files[0]; if(!file) return;
+    if(!STATE.key) { UI.panel.classList.remove('hidden'); return notify("API Key Required"); }
+    UI.dropMsg.classList.add('hidden'); UI.busyMsg.classList.remove('hidden');
+    try {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            const b64 = reader.result.split(',')[1];
+            const prompt = `Analyze audio for 'Slash Reading'. Split into 3-7 word chunks. JSON: { "chunks": [ { "text": "...", "start": 0.0, "end": 1.5, "is_sentence_end": false } ] }. Precise timestamps.`;
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${STATE.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "audio/mpeg", data: b64 } }] }] }) });
+            const json = await res.json();
+            const text = json.candidates[0].content.parts[0].text.replace(/^```json\n?|```$/g, '').trim();
+            const data = JSON.parse(text);
+            data.chunks.forEach(c => c.enabled = true);
+            await DB.add(file, data.chunks); notify("Saved!"); UI.fileIn.value = ''; refreshLib();
+            UI.dropMsg.classList.remove('hidden'); UI.busyMsg.classList.add('hidden');
         };
+    } catch(err) { console.error(err); notify("Error: Check API Key / Console"); UI.dropMsg.classList.remove('hidden'); UI.busyMsg.classList.add('hidden'); } 
+}
 
-        function setupEventListeners() {
-            saveKeyBtn.onclick = () => {
-                const key = apiKeyInput.value.trim();
-                if (key) {
-                    apiKey = key;
-                    localStorage.setItem('GEMINI_API_KEY', key);
-                    showError("API Key saved to browser storage.");
-                }
-            };
+function loadTrack(item) { STATE.track = item; STATE.audio.src = URL.createObjectURL(item.audio); UI.title.textContent = item.title; STATE.playCount = 0; STATE.playEndTime = Infinity; STATE.activeIdx = 0; updateLoop(); cancelWait(); showView('play'); }
 
-            uploadZone.onclick = () => audioInput.click();
-            audioInput.onchange = handleFileUpload;
-            playPauseBtn.onclick = togglePlay;
+function renderTrans() {
+    UI.trans.innerHTML = ''; let box = mkBox();
+    STATE.track.chunks.forEach((c, i) => {
+        const sp = document.createElement('span'); sp.id = `c-${i}`;
+        sp.className = `cursor-pointer px-1 rounded transition-all text-xl leading-relaxed text-slate-500 hover:text-blue-600 ${!c.enabled ? 'disabled-chunk' : ''}`;
+        sp.innerHTML = `${c.text}${c.is_sentence_end ? '' : ' /'}`;
+        const wrap = document.createElement('span'); wrap.className = "inline-flex items-center gap-1 group relative";
+        const btn = document.createElement('button'); btn.className = `w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${c.enabled ? 'text-slate-200 hover:text-blue-400' : 'text-red-400'} transition-colors`;
+        btn.innerHTML = '👁'; btn.onclick = (e) => { e.stopPropagation(); toggleChunk(i); };
+        wrap.appendChild(btn); wrap.appendChild(sp); sp.onclick = () => playFrom(i); box.appendChild(wrap);
+        if (c.is_sentence_end) { UI.trans.appendChild(box); box = mkBox(); }
+    });
+    if(box.hasChildNodes()) UI.trans.appendChild(box);
+}
+function mkBox() { const d = document.createElement('div'); d.className = "sentence-container mb-4 p-2 rounded-lg flex flex-wrap gap-x-2 gap-y-1"; return d; }
+function toggleChunk(i) {
+    const ch = STATE.track.chunks; const target = !ch[i].enabled;
+    let s=i; while(s>0 && !ch[s-1].is_sentence_end) s--;
+    let e=i; while(e<ch.length-1 && !ch[e].is_sentence_end) e++;
+    for(let k=s; k<=e; k++) ch[k].enabled = target;
+    renderTrans();
+}
+
+/**
+ * PLAYBACK ENGINE (V18) - Smart Resume
+ */
+function playFrom(i) {
+    if (!STATE.track) return; cancelWait();
+    
+    // SKIP Logic
+    const chunks = STATE.track.chunks;
+    if (!chunks[i].enabled) {
+        let next = i + 1;
+        while(next < chunks.length && !chunks[next].enabled) next++;
+        if (next < chunks.length) i = next; else { onTrackEnd(); return; }
+    }
+
+    STATE.activeIdx = i;
+    const chunk = chunks[i];
+    
+    const safety = 0.1;
+    const start = Math.max(0, chunk.start - STATE.overlap - safety);
+    STATE.audio.currentTime = start;
+    
+    setStopGoal(i);
+    highlight(i);
+    STATE.seekGuard = true; setTimeout(()=>STATE.seekGuard=false, 300);
+    STATE.audio.play().catch(console.error);
+}
+
+function setStopGoal(i) {
+    const chunks = STATE.track.chunks;
+    const chunk = chunks[i];
+    
+    if (STATE.mode === 'nonstop') {
+        STATE.playEndTime = Infinity;
+    } else if (STATE.mode === 'slash') {
+        STATE.playEndTime = chunk.end + 0.15; // Padding
+    } else {
+        // Sentence mode
+        let end = i;
+        while(end < chunks.length && !chunks[end].is_sentence_end) end++;
+        
+        let targetEndChunkIdx = (end < chunks.length) ? end : chunks.length - 1;
+        let baseEndTime = chunks[targetEndChunkIdx].end;
+
+        // Gap Awareness
+        let nextChunkIdx = targetEndChunkIdx + 1;
+        if (nextChunkIdx < chunks.length) {
+            const gap = chunks[nextChunkIdx].start - baseEndTime;
+            if (gap > 2.0) {
+                baseEndTime = chunks[nextChunkIdx].start - 0.1; 
+            } else {
+                baseEndTime += 0.2; 
+            }
+            if (chunks[nextChunkIdx].enabled && baseEndTime > chunks[nextChunkIdx].start) {
+                baseEndTime = chunks[nextChunkIdx].start - 0.05;
+            }
+        } else {
+            baseEndTime += 0.2;
+        }
+        STATE.playEndTime = baseEndTime;
+    }
+}
+
+function startLoop() { if(!STATE.raf) { const f=()=>{ sync(); STATE.raf=requestAnimationFrame(f); }; STATE.raf=requestAnimationFrame(f); } }
+function stopLoop() { cancelAnimationFrame(STATE.raf); STATE.raf = null; }
+
+function sync() {
+    if(!STATE.track || STATE.isWaiting) return;
+    const t = STATE.audio.currentTime; UI.bar.value = t; UI.curr.textContent = fmt(t);
+    const ch = STATE.track.chunks;
+    
+    // Highlight Logic
+    let displayIdx = STATE.activeIdx;
+    if (STATE.mode === 'nonstop') {
+        const found = ch.findIndex(c => t >= c.start && t < c.end);
+        if (found !== -1) displayIdx = found;
+    } else {
+        const visualT = t + 0.1; 
+        let found = ch.findIndex(c => visualT >= c.start && visualT < c.end);
+        if (found === -1) {
+            found = ch.findIndex(c => visualT >= (c.start - STATE.overlap) && visualT < c.end);
+        }
+
+        if (found !== -1 && found > STATE.activeIdx) {
+            if (!ch[found].enabled) {
+                 let next = found + 1; while(next < ch.length && !ch[next].enabled) next++;
+                 if (next < ch.length) { playFrom(next); return; } else { onTrackEnd(); return; }
+            }
             
-            audioPlayer.onplay = () => { syncPlayIcon('pause'); startSyncLoop(); };
-            audioPlayer.onpause = () => { if (!isWaitingForNext) syncPlayIcon('play'); stopSyncLoop(); };
-            audioPlayer.onloadedmetadata = () => { durationEl.textContent = formatTime(audioPlayer.duration); seekSlider.max = audioPlayer.duration; };
-
-            seekSlider.oninput = () => {
-                audioPlayer.currentTime = seekSlider.value;
-                lastStoppedId = -1; clearPauseTimer(); isWaitingForNext = false; updateUIState();
-            };
-
-            speedSelect.onchange = () => audioPlayer.playbackRate = parseFloat(speedSelect.value);
-            pauseRatioSelect.onchange = () => pauseRatio = parseFloat(pauseRatioSelect.value);
-
-            modeToggle.onclick = () => {
-                playbackMode = playbackMode === 'continuous' ? 'paused' : 'continuous';
-                modeText.textContent = playbackMode === 'continuous' ? '一括再生' : '文ごとに停止';
-                modeToggle.classList.toggle('border-blue-600', playbackMode === 'paused');
-                modeToggle.classList.toggle('bg-blue-50', playbackMode === 'paused');
-                if (playbackMode !== 'paused') { clearPauseTimer(); isWaitingForNext = false; }
-                const icon = modeToggle.querySelector('[data-lucide]');
-                if (icon) { icon.setAttribute('data-lucide', playbackMode === 'paused' ? 'pause-octagon' : 'list-music'); lucide.createIcons(); }
-            };
-
-            slashToggle.onclick = () => {
-                isSlashMode = !isSlashMode;
-                slashText.textContent = isSlashMode ? 'On' : 'Off';
-                slashBadge.classList.toggle('hidden', !isSlashMode);
-                renderTranscription();
-            };
-
-            setStartBtn.onclick = () => { repeatPoints.start = audioPlayer.currentTime; updateRepeatUI(); };
-            setEndBtn.onclick = () => { repeatPoints.end = audioPlayer.currentTime; updateRepeatUI(); };
-            clearRepeatBtn.onclick = () => { repeatPoints = { start: null, end: null }; updateRepeatUI(); };
-        }
-
-        function startSyncLoop() {
-            if (animationFrameId) return;
-            const loop = () => { updateUIState(); animationFrameId = requestAnimationFrame(loop); };
-            animationFrameId = requestAnimationFrame(loop);
-        }
-
-        function stopSyncLoop() { if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; } }
-
-        function syncPlayIcon(name) {
-            const icon = playPauseBtn.querySelector('[data-lucide]');
-            if (icon) { icon.setAttribute('data-lucide', name); lucide.createIcons(); }
-        }
-
-        async function handleFileUpload(e) {
-            const file = e.target.files[0];
-            if (!file || !apiKey) { if(!apiKey) showError("API Keyを設定してください"); return; }
-            uploadPrompt.classList.add('hidden'); transcribingState.classList.remove('hidden'); uploadZone.classList.add('pointer-events-none');
-            try {
-                const base64Audio = await fileToBase64(file);
-                audioPlayer.src = URL.createObjectURL(file);
-                segments = await requestTranscription(base64Audio);
-                segments = segments.map(seg => ({ ...seg, enabled: true }));
-                renderTranscription();
-                uploadZone.classList.add('hidden'); playerContainer.classList.remove('hidden');
-            } catch (err) {
-                showError("解析に失敗しました。Keyを確認してください");
-                uploadPrompt.classList.remove('hidden'); transcribingState.classList.add('hidden'); uploadZone.classList.remove('pointer-events-none');
-            }
-        }
-
-        async function requestTranscription(base64Data) {
-            const systemPrompt = `Analyze the audio and transcribe in English. Return JSON 'segments' array with text, slashed_text, start, end. Each segment is one sentence. Accurate timestamps are critical.`;
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ role: "user", parts: [{ text: "Transcribe precisely." }, { inlineData: { mimeType: "audio/mpeg", data: base64Data.split(',')[1] } }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                    generationConfig: { responseMimeType: "application/json" }
-                })
-            });
-            const data = await response.json();
-            return JSON.parse(data.candidates[0].content.parts[0].text).segments;
-        }
-
-        function renderTranscription() {
-            transcriptList.innerHTML = '';
-            segments.forEach((seg, idx) => {
-                const div = document.createElement('div');
-                div.id = `seg-${idx}`;
-                const isSkipped = !seg.enabled;
-                div.className = `group flex p-4 cursor-pointer transition-all duration-200 border-l-4 border-transparent hover:bg-slate-50 segment-item ${isSkipped ? 'skipped-segment' : ''}`;
-                let displayText = isSlashMode ? seg.slashed_text.split('/').map(p => p.trim()).filter(p => p.length > 0).join(' /<br>') : seg.text;
-                div.innerHTML = `
-                    <div class="flex items-start gap-4 w-full">
-                        <button class="skip-btn mt-1 text-slate-300 hover:text-blue-500 transition-colors"><i data-lucide="${isSkipped ? 'eye-off' : 'eye'}" class="w-4 h-4"></i></button>
-                        <span class="text-xs font-mono text-slate-400 mt-1.5 min-w-[35px] font-medium">${formatTime(seg.start)}</span>
-                        <p class="text-lg leading-relaxed text-slate-700 font-medium segment-text flex-1">${displayText}</p>
-                    </div>
-                `;
-                div.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); seg.enabled = !seg.enabled; renderTranscription(); };
-                div.onclick = () => { if (seg.enabled) { clearPauseTimer(); lastStoppedId = -1; isWaitingForNext = false; audioPlayer.currentTime = seg.start; audioPlayer.play().then(() => updateUIState()); } };
-                transcriptList.appendChild(div);
-            });
-            lucide.createIcons();
-        }
-
-        function updateUIState() {
-            const time = audioPlayer.currentTime;
-            seekSlider.value = time; currentTimeEl.textContent = formatTime(time);
-            if (repeatPoints.start !== null && repeatPoints.end !== null && time >= repeatPoints.end) { audioPlayer.currentTime = repeatPoints.start; return; }
-
-            let foundIdx = segments.findIndex(s => time >= s.start && time < s.end);
-            if (foundIdx === -1) { for (let i = segments.length - 1; i >= 0; i--) { if (time >= segments[i].end) { foundIdx = i; break; } } }
-
-            if (foundIdx !== -1 && foundIdx !== currentActiveId) {
-                if (currentActiveId !== -1) { const prev = document.getElementById(`seg-${currentActiveId}`); if (prev) prev.classList.remove('active-segment'); }
-                const next = document.getElementById(`seg-${foundIdx}`);
-                if (next && segments[foundIdx].enabled) { next.classList.add('active-segment'); next.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-                currentActiveId = foundIdx;
-            }
-
-            if (foundIdx !== -1 && !segments[foundIdx].enabled && !audioPlayer.paused) {
-                const nIdx = segments.findIndex((s, i) => i > foundIdx && s.enabled);
-                if (nIdx !== -1) audioPlayer.currentTime = segments[nIdx].start; else audioPlayer.pause();
-                return;
-            }
-
-            if (playbackMode === 'paused' && currentActiveId !== -1 && !audioPlayer.paused) {
-                const seg = segments[currentActiveId];
-                if ((time >= seg.end - 0.05) && lastStoppedId !== currentActiveId) stopAndStartTimer(currentActiveId);
-            }
-        }
-
-        function stopAndStartTimer(idx) {
-            audioPlayer.pause(); isWaitingForNext = true; lastStoppedId = idx;
-            const seg = segments[idx];
-            startPauseTimer((seg.end - seg.start) * 1000 * pauseRatio);
-        }
-
-        function startPauseTimer(durationMs) {
-            clearPauseTimer(); speakingTimer.classList.remove('hidden'); isWaitingForNext = true;
-            let remaining = durationMs / 1000; timerSeconds.textContent = remaining.toFixed(1) + 's';
-            pauseTimerInterval = setInterval(() => {
-                remaining -= 0.1;
-                if (remaining <= 0) {
-                    clearPauseTimer();
-                    if (playbackMode === 'paused') {
-                        const nIdx = segments.findIndex((s, i) => i > lastStoppedId && s.enabled);
-                        if (nIdx !== -1) audioPlayer.currentTime = segments[nIdx].start;
-                        audioPlayer.play().then(() => { isWaitingForNext = false; });
-                    }
-                } else { timerSeconds.textContent = Math.max(0, remaining).toFixed(1) + 's'; }
-            }, 100);
-        }
-
-        function clearPauseTimer() { if (pauseTimerInterval) clearInterval(pauseTimerInterval); pauseTimerInterval = null; speakingTimer.classList.add('hidden'); }
-
-        function togglePlay() {
-            if (audioPlayer.paused) {
-                if (isWaitingForNext) {
-                    clearPauseTimer(); isWaitingForNext = false;
-                    const nIdx = segments.findIndex((s, i) => i > lastStoppedId && s.enabled);
-                    if (nIdx !== -1) audioPlayer.currentTime = segments[nIdx].start;
+            // V18 FIX: Prevent advancing activeIdx prematurely in Sentence mode
+            let canAdvance = true;
+            if (STATE.mode === 'sentence') {
+                const currentChunk = ch[STATE.activeIdx];
+                // Do not update activeIdx if current chunk is end of sentence.
+                // We must wait for stop logic to engage.
+                if (currentChunk.is_sentence_end) {
+                    canAdvance = false;
                 }
-                audioPlayer.play();
-            } else audioPlayer.pause();
+            }
+            
+            if (canAdvance) {
+                STATE.activeIdx = found;
+                displayIdx = found;
+                highlight(displayIdx);
+            }
         }
+    }
+    
+    if (STATE.mode === 'nonstop' && displayIdx !== -1 && ch[displayIdx].enabled) highlight(displayIdx);
 
-        function updateRepeatUI() {
-            if (repeatPoints.start !== null && repeatPoints.end !== null) {
-                if (repeatPoints.start > repeatPoints.end) [repeatPoints.start, repeatPoints.end] = [repeatPoints.end, repeatPoints.start];
-                repeatStatus.classList.remove('hidden'); loopDisplay.textContent = `${formatTime(repeatPoints.start)} - ${formatTime(repeatPoints.end)}`;
-            } else repeatStatus.classList.add('hidden');
+    // Stop Check
+    if (STATE.mode !== 'nonstop' && !STATE.seekGuard) {
+        if (t >= STATE.playEndTime) {
+            doPause();
+            return;
         }
+        
+        // Overrun Protection
+        if (STATE.activeIdx !== -1) {
+             let nextIdx = STATE.activeIdx + 1;
+             while(nextIdx < ch.length && !ch[nextIdx].enabled) nextIdx++;
+             if (nextIdx < ch.length) {
+                 if (t >= ch[nextIdx].start + 0.05) {
+                     doPause();
+                 }
+             }
+        }
+    }
+}
 
-        function formatTime(s) { const m = Math.floor(s / 60); return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`; }
-        function fileToBase64(file) { return new Promise((r, j) => { const f = new FileReader(); f.readAsDataURL(file); f.onload = () => r(f.result); f.onerror = e => j(e); }); }
-        function showError(m) { errorMessage.textContent = m; errorToast.classList.remove('translate-y-20'); setTimeout(() => errorToast.classList.add('translate-y-20'), 5000); }
-    </script>
+function doPause() {
+    STATE.audio.pause(); STATE.isWaiting = true;
+    
+    let dur = 0;
+    if (STATE.mode === 'slash') {
+        const c = STATE.track.chunks[STATE.activeIdx]; dur = c.end - c.start;
+    } else {
+        let endIdx = STATE.activeIdx; 
+        let startIdx = endIdx;
+        while(startIdx > 0 && !STATE.track.chunks[startIdx-1].is_sentence_end) startIdx--;
+        if (STATE.track.chunks[endIdx]) {
+            dur = STATE.track.chunks[endIdx].end - STATE.track.chunks[startIdx].start;
+        }
+    }
+    
+    const ms = dur * 1000 * STATE.waitRatio;
+    UI.overlay.classList.remove('hidden');
+    let rem = ms / 1000; UI.timer.textContent = rem.toFixed(1);
+    
+    STATE.waitTimer = setInterval(() => {
+        rem -= 0.1;
+        if (rem <= 0) {
+            cancelWait();
+            // Find NEXT sentence/chunk to play
+            let next = STATE.activeIdx + 1;
+            
+            // In Sentence mode, if activeIdx is somehow pointing to start of next sentence (overrun case),
+            // we should not skip it. But normally activeIdx is kept at end of sentence by V18 fix.
+            
+            if (next < STATE.track.chunks.length) {
+                playFrom(next);
+            } else {
+                onTrackEnd();
+            }
+        } else UI.timer.textContent = Math.max(0, rem).toFixed(1);
+    }, 100);
+}
+
+function onTrackEnd() {
+    STATE.playCount++;
+    if (STATE.maxRepeats === 999 || STATE.playCount < STATE.maxRepeats) {
+        updateLoop(); playFrom(0);
+    } else {
+        stopAudio();
+    }
+}
+
+function stopAudio() { cancelWait(); STATE.audio.pause(); STATE.audio.currentTime = 0; STATE.activeIdx = 0; STATE.playEndTime = Infinity; STATE.playCount = 0; updateLoop(); document.querySelectorAll('.active-chunk').forEach(e => e.classList.remove('active-chunk')); }
+
+function onSeek() {
+    STATE.audio.currentTime = UI.bar.value;
+    const t = UI.bar.value;
+    const i = STATE.track.chunks.findIndex(c => t >= c.start && t < c.end);
+    if(i !== -1) {
+        STATE.activeIdx = i;
+        if(STATE.mode !== 'nonstop') setStopGoal(i);
+    }
+    cancelWait();
+}
+
+function togglePlay() { 
+    if (STATE.audio.paused) { 
+        if(STATE.isWaiting) { cancelWait(); let next = STATE.activeIdx + 1; if (next < STATE.track.chunks.length) playFrom(next); }
+        else { if(STATE.playEndTime === -1 && STATE.mode !== 'nonstop') playFrom(STATE.activeIdx); else STATE.audio.play(); } 
+    } else STATE.audio.pause(); 
+}
+function toBase64(f) { return new Promise((r, j) => { const rd = new FileReader(); rd.readAsDataURL(f); rd.onload = () => r(rd.result.split(',')[1]); rd.onerror = j; }); }
+</script>
 </body>
 </html>
